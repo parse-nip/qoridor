@@ -9,7 +9,7 @@ import {
   WALL_GRID,
 } from "./game.js";
 
-const NAMES = ["Cyan", "Pink"];
+const NAMES = ["Teal", "Rose"];
 
 const lobbyEl = document.getElementById("lobby");
 const gameView = document.getElementById("gameView");
@@ -234,7 +234,7 @@ function render() {
 
   if (game.winner !== null) {
     winText.textContent = `${NAMES[game.winner]} wins`;
-    winText.style.color = game.winner === 0 ? "var(--cyan)" : "var(--pink)";
+    winText.style.color = game.winner === 0 ? "var(--a)" : "var(--b)";
     winModal.hidden = false;
   } else {
     winModal.hidden = true;
