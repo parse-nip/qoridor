@@ -24,6 +24,7 @@
   },
   "homepage": "https://github.com/parse-nip/qoridor#readme",
   "devDependencies": {
+    "playwright-core": "^1.61.1",
     "vitest": "^4.1.10",
     "wrangler": "^4.114.0"
   },

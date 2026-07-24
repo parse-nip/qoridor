@@ -230,8 +230,14 @@ function onTileClick(r, c) {
 }
 
 function setMode(next) {
-  mode = next;
+  if (next === "wall" && game.wallsLeft[game.current] <= 0) {
+    hintEl.textContent = "No walls left — you must move.";
+    mode = "move";
+  } else {
+    mode = next;
+  }
   ghostWall = null;
+  if (next === "wall") window.__wallOrientLocked = false;
   render();
 }
 
