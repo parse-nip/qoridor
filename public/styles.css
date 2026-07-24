@@ -359,16 +359,18 @@ input::placeholder {
 
 .wall.ghost {
   background: var(--wall-color);
-  opacity: 0.6;
+  opacity: 0.75;
   z-index: 6;
-  outline: 2px dashed color-mix(in srgb, var(--wall-color) 65%, #1c1c1a);
-  outline-offset: 1px;
 }
 
-.wall.ghost.invalid {
-  background: #999;
-  opacity: 0.3;
-  outline: none;
+.wall.ghost.h {
+  height: max(8px, calc(var(--gap) * 0.85));
+  margin-top: calc(max(8px, calc(var(--gap) * 0.85)) / -4);
+}
+
+.wall.ghost.v {
+  width: max(8px, calc(var(--gap) * 0.85));
+  margin-left: calc(max(8px, calc(var(--gap) * 0.85)) / -4);
 }
 
 .overlay {
