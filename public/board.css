@@ -358,19 +358,19 @@ input::placeholder {
 }
 
 .wall.ghost {
-  background: var(--wall-color);
-  opacity: 0.75;
+  background: var(--wall-color) !important;
+  opacity: 0.8;
   z-index: 6;
 }
 
 .wall.ghost.h {
-  height: max(8px, calc(var(--gap) * 0.85));
-  margin-top: calc(max(8px, calc(var(--gap) * 0.85)) / -4);
+  height: 10px !important;
+  margin-top: -3px;
 }
 
 .wall.ghost.v {
-  width: max(8px, calc(var(--gap) * 0.85));
-  margin-left: calc(max(8px, calc(var(--gap) * 0.85)) / -4);
+  width: 10px !important;
+  margin-left: -3px;
 }
 
 .overlay {
@@ -508,3 +508,4 @@ input::placeholder {
     display: none;
   }
 }
+
