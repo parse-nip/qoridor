@@ -3,84 +3,93 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Walls — Quoridor</title>
-    <meta
-      name="description"
-      content="Quoridor — neon noir board game. Race to the opposite wall."
-    />
+    <title>Walls</title>
+    <meta name="description" content="Quoridor — clean neon multiplayer." />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;800&family=Space+Grotesk:wght@400;500;600&display=swap"
+      href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=Syne:wght@600;700;800&display=swap"
       rel="stylesheet"
     />
     <link rel="stylesheet" href="./styles.css" />
-    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230a0b0d'/%3E%3Ccircle cx='16' cy='16' r='7' fill='%232ee6c5'/%3E%3C/svg%3E" />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23090a0b'/%3E%3Ccircle cx='12' cy='16' r='5' fill='%232ee6c5'/%3E%3Ccircle cx='20' cy='16' r='5' fill='%23ff6b8a'/%3E%3C/svg%3E"
+    />
   </head>
   <body>
-    <div class="atmosphere" aria-hidden="true"></div>
+    <div class="bg" aria-hidden="true"></div>
 
-    <header class="topbar">
-      <div class="brand">
-        <span class="brand-mark" aria-hidden="true">
-          <i class="dot cyan"></i>
-          <i class="dot pink"></i>
-        </span>
-        <h1>WALLS</h1>
+    <!-- Lobby -->
+    <section id="lobby" class="lobby">
+      <div class="lobby-inner">
+        <p class="logo">Walls</p>
+        <p class="logo-sub">Quoridor for two</p>
+
+        <div class="lobby-actions">
+          <button type="button" class="primary" id="btnCreate">New room</button>
+          <div class="join-row">
+            <input
+              id="joinCode"
+              type="text"
+              maxlength="8"
+              placeholder="Room code"
+              autocomplete="off"
+              spellcheck="false"
+            />
+            <button type="button" class="secondary" id="btnJoin">Join</button>
+          </div>
+          <button type="button" class="textish" id="btnLocal">Play on this device</button>
+        </div>
+        <p class="lobby-err" id="lobbyErr" hidden></p>
       </div>
-      <p class="tagline">Quoridor · first to the far line wins</p>
-    </header>
+    </section>
 
-    <main class="layout">
-      <aside class="panel panel-p0" data-player="0">
-        <div class="panel-glow"></div>
-        <div class="player-label">Cyan</div>
-        <div class="wall-count">
-          <span class="wall-pips" id="pips0"></span>
-          <span class="wall-num" id="walls0">10</span>
-        </div>
-        <div class="turn-chip" id="turn0">Your turn</div>
-      </aside>
+    <!-- Game -->
+    <section id="gameView" class="game-view" hidden>
+      <header class="bar">
+        <button type="button" class="textish back" id="btnLeave">← Leave</button>
+        <p class="logo sm">Walls</p>
+        <div class="room-meta" id="roomMeta"></div>
+      </header>
 
-      <section class="board-wrap">
-        <div class="board-stage">
-          <div id="board" class="board" role="grid" aria-label="Quoridor board"></div>
-          <div id="overlay" class="overlay" aria-hidden="true"></div>
-        </div>
-        <div class="hint" id="hint">
-          Move your pawn, or place a wall. Drag across a gutter to aim a wall —
-          click to drop. Press <kbd>R</kbd> to rotate.
-        </div>
-      </section>
+      <div class="status" id="status"></div>
 
-      <aside class="panel panel-p1" data-player="1">
-        <div class="panel-glow"></div>
-        <div class="player-label">Pink</div>
-        <div class="wall-count">
-          <span class="wall-pips" id="pips1"></span>
-          <span class="wall-num" id="walls1">10</span>
+      <div class="stage">
+        <div class="side left" id="side0">
+          <span class="swatch cyan"></span>
+          <span class="side-name">Cyan</span>
+          <span class="side-walls" id="walls0">10</span>
         </div>
-        <div class="turn-chip" id="turn1">Waiting</div>
-      </aside>
-    </main>
 
-    <footer class="toolbar">
-      <button type="button" class="btn" id="btnModeMove" data-active="true">
-        Move
-      </button>
-      <button type="button" class="btn" id="btnModeWall">Wall</button>
-      <button type="button" class="btn ghost" id="btnRotate" title="Rotate wall (R)">
-        Rotate
-      </button>
-      <button type="button" class="btn ghost" id="btnUndo">Undo</button>
-      <button type="button" class="btn ghost" id="btnNew">New game</button>
-    </footer>
+        <div class="board-frame">
+          <div id="board" class="board" role="grid" aria-label="Board"></div>
+          <div id="overlay" class="overlay"></div>
+        </div>
+
+        <div class="side right" id="side1">
+          <span class="swatch pink"></span>
+          <span class="side-name">Pink</span>
+          <span class="side-walls" id="walls1">10</span>
+        </div>
+      </div>
+
+      <div class="controls">
+        <div class="seg" role="group" aria-label="Action">
+          <button type="button" class="seg-btn" id="btnModeMove" data-on="true">Move</button>
+          <button type="button" class="seg-btn" id="btnModeWall">Wall</button>
+        </div>
+        <button type="button" class="ghost" id="btnRotate">Rotate</button>
+        <button type="button" class="ghost" id="btnUndo">Undo</button>
+        <button type="button" class="ghost" id="btnNew">Reset</button>
+        <button type="button" class="ghost" id="btnCopy" hidden>Copy link</button>
+      </div>
+    </section>
 
     <div id="winModal" class="modal" hidden>
       <div class="modal-card">
-        <p class="modal-eyebrow">Game over</p>
-        <h2 id="winText">Cyan wins</h2>
-        <button type="button" class="btn" id="btnPlayAgain">Play again</button>
+        <p id="winText">Cyan wins</p>
+        <button type="button" class="primary" id="btnPlayAgain">Play again</button>
       </div>
     </div>
 
