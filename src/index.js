@@ -27,12 +27,17 @@ export class GameRoom extends DurableObject {
   }
 
   async fetch(request) {
+    await this.ensureLoaded();
+
     const upgrade = request.headers.get("Upgrade");
     if (!upgrade || upgrade.toLowerCase() !== "websocket") {
-      return new Response("Expected WebSocket", { status: 426 });
+      // Health / warm — used by /api/new and join preflight
+      return Response.json({
+        ok: true,
+        state: this.publicState(),
+        seats: this.seatSnapshot(),
+      });
     }
-
-    await this.ensureLoaded();
 
     const pair = new WebSocketPair();
     const [client, server] = Object.values(pair);
@@ -234,7 +239,22 @@ export default {
     const url = new URL(request.url);
 
     if (url.pathname === "/api/new") {
-      return Response.json({ code: randomCode() });
+      const code = randomCode();
+      try {
+        // Warm the Durable Object so the first WebSocket is reliable
+        const stub = env.GAME_ROOM.getByName(code);
+        await stub.fetch(new Request(`https://room/warm?room=${code}`, { method: "GET" }));
+      } catch (err) {
+        return Response.json(
+          { error: err?.message || "Room create failed" },
+          { status: 500 }
+        );
+      }
+      return Response.json({ code });
+    }
+
+    if (url.pathname === "/api/health") {
+      return Response.json({ ok: true });
     }
 
     // /api/room/:code or /api/room/:code/ws
@@ -245,17 +265,11 @@ export default {
         return new Response("Invalid room code", { status: 400 });
       }
 
-      const upgrade = request.headers.get("Upgrade");
-      if (!upgrade || upgrade.toLowerCase() !== "websocket") {
-        return new Response("Expected WebSocket", { status: 426 });
-      }
-
       try {
         const stub = env.GAME_ROOM.getByName(code);
-        // Pass room code through query for the DO welcome payload
         const forwardUrl = new URL(request.url);
         forwardUrl.searchParams.set("room", code);
-        return stub.fetch(new Request(forwardUrl.toString(), request));
+        return await stub.fetch(new Request(forwardUrl.toString(), request));
       } catch (err) {
         return new Response(`DO error: ${err?.message || String(err)}`, {
           status: 500,

@@ -362,24 +362,68 @@ function startLocal() {
   render();
 }
 
-function connectRoom(code) {
+function wsUrl(code) {
+  const proto = location.protocol === "https:" ? "wss" : "ws";
+  return `${proto}://${location.host}/api/room/${code}/ws`;
+}
+
+function onSocketMessage(ev) {
+  let msg;
+  try {
+    msg = JSON.parse(ev.data);
+  } catch {
+    return;
+  }
+
+  if (msg.type === "welcome") return;
+
+  if (msg.type === "state") {
+    applyState(msg.state);
+    if (msg.seats) seats = msg.seats;
+    ghostWall = null;
+    if (msg.event === "wall" || msg.event === "move") mode = "move";
+    render();
+    return;
+  }
+
+  if (msg.type === "seats") {
+    seats = msg.seats;
+    render();
+    return;
+  }
+
+  if (msg.type === "error") {
+    statusEl.textContent = msg.error;
+  }
+}
+
+function connectOnce(code) {
   return new Promise((resolve, reject) => {
-    disconnect();
-    roomCode = code.toUpperCase();
-    const proto = location.protocol === "https:" ? "wss" : "ws";
-    const ws = new WebSocket(`${proto}://${location.host}/api/room/${roomCode}/ws`);
-    socket = ws;
+    const ws = new WebSocket(wsUrl(code));
+    let settled = false;
 
     const timer = setTimeout(() => {
-      reject(new Error("Connection timed out"));
-      ws.close();
-    }, 8000);
+      fail("Connection timed out");
+    }, 10000);
 
-    ws.onopen = () => {
-      /* wait for welcome */
+    const fail = (reason) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      try {
+        ws.close();
+      } catch {
+        /* ignore */
+      }
+      reject(new Error(reason));
     };
 
-    ws.onmessage = (ev) => {
+    ws.addEventListener("message", (ev) => {
+      if (settled) {
+        onSocketMessage(ev);
+        return;
+      }
+
       let msg;
       try {
         msg = JSON.parse(ev.data);
@@ -387,60 +431,88 @@ function connectRoom(code) {
         return;
       }
 
-      if (msg.type === "welcome") {
-        clearTimeout(timer);
-        seat = msg.seat;
-        if (msg.state) applyState(msg.state);
-        if (msg.seats) seats = msg.seats;
-        playMode = "online";
-        history.replaceState(null, "", `/?room=${roomCode}`);
-        showGame();
-        render();
-        resolve({ seat, code: roomCode });
-        return;
-      }
+      if (msg.type !== "welcome") return;
 
-      if (msg.type === "state") {
-        applyState(msg.state);
-        if (msg.seats) seats = msg.seats;
-        ghostWall = null;
-        if (msg.event === "wall" || msg.event === "move") mode = "move";
-        render();
-        return;
-      }
-
-      if (msg.type === "seats") {
-        seats = msg.seats;
-        render();
-        return;
-      }
-
-      if (msg.type === "error") {
-        statusEl.textContent = msg.error;
-      }
-    };
-
-    ws.onclose = () => {
+      settled = true;
       clearTimeout(timer);
-      if (playMode === "online") {
-        statusEl.textContent = "Disconnected — rejoin from the lobby";
-      }
-    };
+      socket = ws;
+      seat = msg.seat;
+      if (msg.state) applyState(msg.state);
+      if (msg.seats) seats = msg.seats;
+      playMode = "online";
+      roomCode = code;
+      history.replaceState(null, "", `/?room=${code}`);
+      showGame();
+      render();
+      resolve({ seat, code, ws });
+    });
 
-    ws.onerror = () => {
-      clearTimeout(timer);
-      reject(new Error("Could not connect"));
-    };
+    ws.addEventListener("close", (ev) => {
+      if (!settled) {
+        const hint =
+          ev.code === 1006
+            ? "WebSocket blocked or failed — try again, or disable VPN/adblock"
+            : `Closed before welcome (${ev.code})`;
+        fail(hint);
+        return;
+      }
+      if (playMode === "online" && socket === ws) {
+        statusEl.textContent = "Disconnected — use Leave, then rejoin";
+      }
+    });
+
+    ws.addEventListener("error", () => {
+      setTimeout(() => {
+        if (!settled) fail("Could not open WebSocket — try again");
+      }, 400);
+    });
   });
 }
 
-async function createRoom() {
-  setLobbyError("");
+async function connectRoom(code, { attempts = 3 } = {}) {
+  const normalized = String(code || "")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "");
+  if (normalized.length < 4 || normalized.length > 8) {
+    throw new Error("Enter a valid room code");
+  }
+
+  disconnect();
+  roomCode = normalized;
+  setLobbyError("Connecting…");
+
   try {
-    const res = await fetch("/api/new");
+    const pre = await fetch(`/api/room/${normalized}`, { cache: "no-store" });
+    if (!pre.ok) {
+      const text = await pre.text();
+      throw new Error(text || `Room preflight failed (${pre.status})`);
+    }
+  } catch (err) {
+    console.warn("preflight", err);
+  }
+
+  let lastErr = null;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      const result = await connectOnce(normalized);
+      setLobbyError("");
+      return result;
+    } catch (err) {
+      lastErr = err;
+      await new Promise((r) => setTimeout(r, 400 * (i + 1)));
+    }
+  }
+  throw lastErr || new Error("Could not connect");
+}
+
+async function createRoom() {
+  setLobbyError("Creating room…");
+  try {
+    const res = await fetch("/api/new", { cache: "no-store" });
     if (!res.ok) throw new Error("Could not create room");
-    const { code } = await res.json();
-    await connectRoom(code);
+    const data = await res.json();
+    if (!data.code) throw new Error("Server did not return a room code");
+    await connectRoom(data.code);
   } catch (e) {
     setLobbyError(e.message || "Failed to create room");
   }
@@ -448,11 +520,7 @@ async function createRoom() {
 
 async function joinRoom() {
   setLobbyError("");
-  const code = document.getElementById("joinCode").value.trim().toUpperCase();
-  if (code.length < 4) {
-    setLobbyError("Enter a valid room code");
-    return;
-  }
+  const code = document.getElementById("joinCode").value.trim();
   try {
     await connectRoom(code);
   } catch (e) {

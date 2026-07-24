@@ -26,3 +26,10 @@ Track mastery as we go. Don't check an item until you can explain it in your own
 ## Session notes
 
 Built a 2-player neon-noir Quoridor (`public/`), rules in `public/game.js`, UI in `public/app.js` + `styles.css`, tests in `tests/game.test.js`.
+
+**Update:** Clean lobby/game redesign + online multiplayer via Durable Object `GameRoom` (`src/index.js`) — WebSocket rooms on walls.popped.dev.
+
+### Multiplayer extras to understand
+- [ ] Why the server (DO) must be authoritative for moves/walls
+- [ ] What a “seat” is (0 cyan / 1 pink / -1 spectator) and when you can act
+- [ ] Why out-of-turn actions are rejected on the server, not only hidden in the UI
