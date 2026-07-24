@@ -14,7 +14,6 @@ const NAMES = ["Teal", "Rose"];
 const lobbyEl = document.getElementById("lobby");
 const gameView = document.getElementById("gameView");
 const boardEl = document.getElementById("board");
-const overlayEl = document.getElementById("overlay");
 const statusEl = document.getElementById("status");
 const roomMeta = document.getElementById("roomMeta");
 const winModal = document.getElementById("winModal");
@@ -22,13 +21,10 @@ const winText = document.getElementById("winText");
 const lobbyErr = document.getElementById("lobbyErr");
 const btnCopy = document.getElementById("btnCopy");
 
-/** @type {'lobby'|'local'|'online'} */
 let playMode = "lobby";
 let game = createGame();
-let mode = "move";
-let wallOrient = "h";
 let ghostWall = null;
-let seat = -1; // online seat
+let seat = -1;
 let roomCode = "";
 /** @type {WebSocket|null} */
 let socket = null;
@@ -148,20 +144,16 @@ function applyState(state) {
 }
 
 function render() {
-  overlayEl.classList.toggle("wall-mode", mode === "wall" && canAct());
-  document.getElementById("btnModeMove").dataset.on = String(mode === "move");
-  document.getElementById("btnModeWall").dataset.on = String(mode === "wall");
-
   document.getElementById("side0").classList.toggle("on", game.current === 0 && !game.winner);
   document.getElementById("side1").classList.toggle("on", game.current === 1 && !game.winner);
   document.getElementById("walls0").textContent = String(game.wallsLeft[0]);
   document.getElementById("walls1").textContent = String(game.wallsLeft[1]);
 
-  // Move targets
+  // Move targets — always when you can act
   boardEl.querySelectorAll(".tile").forEach((t) => {
     t.classList.remove("move-target", "for-p0", "for-p1");
   });
-  if (mode === "move" && canAct()) {
+  if (canAct()) {
     for (const m of getLegalMoves(game)) {
       const tile = boardEl.querySelector(`[data-r="${m.r}"][data-c="${m.c}"]`);
       if (tile) tile.classList.add("move-target", `for-p${game.current}`);
@@ -182,18 +174,25 @@ function render() {
     });
     boardEl.appendChild(el);
   }
-  if (ghostWall && mode === "wall" && canAct()) {
-    const valid = isValidWallPlacement(game, { ...ghostWall, owner: game.current });
-    const el = document.createElement("div");
-    el.className = `wall ${ghostWall.orient} owner-${game.current} ghost${valid ? "" : " invalid"}`;
-    const g = wallGeometry(ghostWall);
-    Object.assign(el.style, {
-      left: `${g.left}px`,
-      top: `${g.top}px`,
-      width: `${g.width}px`,
-      height: `${g.height}px`,
+
+  // Ghost only for viable placements
+  if (ghostWall && canAct() && game.wallsLeft[game.current] > 0) {
+    const valid = isValidWallPlacement(game, {
+      ...ghostWall,
+      owner: game.current,
     });
-    boardEl.appendChild(el);
+    if (valid) {
+      const el = document.createElement("div");
+      el.className = `wall ${ghostWall.orient} owner-${game.current} ghost`;
+      const g = wallGeometry(ghostWall);
+      Object.assign(el.style, {
+        left: `${g.left}px`,
+        top: `${g.top}px`,
+        width: `${g.width}px`,
+        height: `${g.height}px`,
+      });
+      boardEl.appendChild(el);
+    }
   }
 
   // Pawns
@@ -241,7 +240,8 @@ function render() {
   }
 }
 
-function pointerToWall(clientX, clientY) {
+/** @returns {{ inGutter: boolean, wall: {r:number,c:number,orient:'h'|'v'}|null }} */
+function pointerInfo(clientX, clientY) {
   const rect = boardEl.getBoundingClientRect();
   const styles = getComputedStyle(boardEl);
   const gapPx = parseFloat(styles.gap);
@@ -250,29 +250,44 @@ function pointerToWall(clientX, clientY) {
   const x = clientX - rect.left;
   const y = clientY - rect.top;
 
-  let orient = wallOrient;
-  if (!window.__wallOrientLocked) {
-    const modY = y % (tilePx + gapPx);
-    const modX = x % (tilePx + gapPx);
-    const inH = modY > tilePx * 0.85;
-    const inV = modX > tilePx * 0.85;
-    if (inH && !inV) orient = "h";
-    else if (inV && !inH) orient = "v";
-    wallOrient = orient;
+  if (x < -2 || y < -2 || x > rect.width + 2 || y > rect.height + 2) {
+    return { inGutter: false, wall: null };
+  }
+
+  const stride = tilePx + gapPx;
+  const modX = ((x % stride) + stride) % stride;
+  const modY = ((y % stride) + stride) % stride;
+  // Expand hit zone into the tile edges so gutters are easy to aim
+  const slop = Math.max(6, gapPx * 0.9);
+  const inHGutter = modY >= tilePx - slop && modY <= tilePx + gapPx + slop;
+  const inVGutter = modX >= tilePx - slop && modX <= tilePx + gapPx + slop;
+
+  if (!inHGutter && !inVGutter) {
+    return { inGutter: false, wall: null };
+  }
+
+  let orient;
+  if (inHGutter && !inVGutter) orient = "h";
+  else if (inVGutter && !inHGutter) orient = "v";
+  else {
+    const distH = Math.abs(modY - tilePx - gapPx / 2);
+    const distV = Math.abs(modX - tilePx - gapPx / 2);
+    orient = distH <= distV ? "h" : "v";
   }
 
   if (orient === "h") {
-    let r = Math.round((y - tilePx) / (tilePx + gapPx));
-    let c = Math.round(x / (tilePx + gapPx) - 0.5);
+    let r = Math.round((y - tilePx) / stride);
+    let c = Math.round(x / stride - 0.5);
     r = Math.max(0, Math.min(WALL_GRID - 1, r));
     c = Math.max(0, Math.min(WALL_GRID - 1, c));
-    return { r, c, orient: "h" };
+    return { inGutter: true, wall: { r, c, orient: "h" } };
   }
-  let c = Math.round((x - tilePx) / (tilePx + gapPx));
-  let r = Math.round(y / (tilePx + gapPx) - 0.5);
+
+  let c = Math.round((x - tilePx) / stride);
+  let r = Math.round(y / stride - 0.5);
   r = Math.max(0, Math.min(WALL_GRID - 1, r));
   c = Math.max(0, Math.min(WALL_GRID - 1, c));
-  return { r, c, orient: "v" };
+  return { inGutter: true, wall: { r, c, orient: "v" } };
 }
 
 function sendAction(payload) {
@@ -284,7 +299,15 @@ function sendAction(payload) {
 }
 
 function onTileClick(r, c) {
-  if (mode !== "move" || !canAct()) return;
+  if (!canAct()) return;
+  // Prefer placing a visible viable ghost wall over moving
+  if (
+    ghostWall &&
+    isValidWallPlacement(game, { ...ghostWall, owner: game.current })
+  ) {
+    placeWall(ghostWall);
+    return;
+  }
   if (sendAction({ type: "move", r, c })) return;
   const res = applyMove(game, { r, c });
   if (!res.ok) return;
@@ -295,34 +318,43 @@ function onTileClick(r, c) {
 
 function placeWall(wall) {
   if (!canAct()) return;
+  if (!isValidWallPlacement(game, { ...wall, owner: game.current })) return;
   if (sendAction({ type: "wall", r: wall.r, c: wall.c, orient: wall.orient })) {
-    mode = "move";
     ghostWall = null;
     return;
   }
   const res = applyWall(game, wall);
-  if (!res.ok) {
-    statusEl.textContent =
-      game.wallsLeft[game.current] <= 0
-        ? "No walls left — move instead"
-        : "Illegal wall";
-    return;
-  }
+  if (!res.ok) return;
   game = res.game;
   ghostWall = null;
-  mode = "move";
   render();
 }
 
-function setMode(next) {
-  if (next === "wall" && game.wallsLeft[game.current] <= 0) {
-    mode = "move";
-    statusEl.textContent = "No walls left — move instead";
-  } else {
-    mode = next;
-    if (next === "wall") window.__wallOrientLocked = false;
+function updateGhost(clientX, clientY) {
+  if (!canAct() || game.wallsLeft[game.current] <= 0) {
+    if (ghostWall) {
+      ghostWall = null;
+      render();
+    }
+    return;
   }
-  ghostWall = null;
+  const info = pointerInfo(clientX, clientY);
+  const next =
+    info.inGutter &&
+    info.wall &&
+    isValidWallPlacement(game, { ...info.wall, owner: game.current })
+      ? info.wall
+      : null;
+
+  const same =
+    (!next && !ghostWall) ||
+    (next &&
+      ghostWall &&
+      next.r === ghostWall.r &&
+      next.c === ghostWall.c &&
+      next.orient === ghostWall.orient);
+  if (same) return;
+  ghostWall = next;
   render();
 }
 
@@ -345,7 +377,6 @@ function doReset() {
     return;
   }
   game = createGame();
-  mode = "move";
   ghostWall = null;
   render();
 }
@@ -356,7 +387,6 @@ function startLocal() {
   seat = -1;
   roomCode = "";
   game = createGame();
-  mode = "move";
   ghostWall = null;
   showGame();
   render();
@@ -381,7 +411,7 @@ function onSocketMessage(ev) {
     applyState(msg.state);
     if (msg.seats) seats = msg.seats;
     ghostWall = null;
-    if (msg.event === "wall" || msg.event === "move") mode = "move";
+    if (msg.event === "wall" || msg.event === "move") ghostWall = null;
     render();
     return;
   }
@@ -544,14 +574,6 @@ document.getElementById("btnCreate").addEventListener("click", createRoom);
 document.getElementById("btnJoin").addEventListener("click", joinRoom);
 document.getElementById("btnLocal").addEventListener("click", startLocal);
 document.getElementById("btnLeave").addEventListener("click", showLobby);
-document.getElementById("btnModeMove").addEventListener("click", () => setMode("move"));
-document.getElementById("btnModeWall").addEventListener("click", () => setMode("wall"));
-document.getElementById("btnRotate").addEventListener("click", () => {
-  window.__wallOrientLocked = true;
-  wallOrient = wallOrient === "h" ? "v" : "h";
-  if (ghostWall) ghostWall = { ...ghostWall, orient: wallOrient };
-  render();
-});
 document.getElementById("btnUndo").addEventListener("click", doUndo);
 document.getElementById("btnNew").addEventListener("click", doReset);
 document.getElementById("btnPlayAgain").addEventListener("click", doReset);
@@ -560,29 +582,29 @@ document.getElementById("joinCode").addEventListener("keydown", (e) => {
   if (e.key === "Enter") joinRoom();
 });
 
-overlayEl.addEventListener("pointermove", (e) => {
-  if (mode !== "wall" || !canAct()) return;
-  ghostWall = pointerToWall(e.clientX, e.clientY);
-  render();
+const boardFrame = document.querySelector(".board-frame");
+
+boardFrame.addEventListener("pointermove", (e) => {
+  updateGhost(e.clientX, e.clientY);
 });
-overlayEl.addEventListener("pointerleave", () => {
+
+boardFrame.addEventListener("pointerleave", () => {
+  if (!ghostWall) return;
   ghostWall = null;
   render();
 });
-overlayEl.addEventListener("click", (e) => {
-  if (mode !== "wall" || !canAct()) return;
-  placeWall(pointerToWall(e.clientX, e.clientY));
-});
 
-window.addEventListener("keydown", (e) => {
-  if (gameView.hidden) return;
-  if (e.key === "r" || e.key === "R") {
-    window.__wallOrientLocked = true;
-    wallOrient = wallOrient === "h" ? "v" : "h";
-    if (ghostWall) ghostWall = { ...ghostWall, orient: wallOrient };
-    render();
-  } else if (e.key === "m" || e.key === "M") setMode("move");
-  else if (e.key === "w" || e.key === "W") setMode("wall");
+boardFrame.addEventListener("click", (e) => {
+  if (e.target.closest(".tile")) return; // tile click handles move / ghost place
+  const info = pointerInfo(e.clientX, e.clientY);
+  if (
+    info.inGutter &&
+    info.wall &&
+    canAct() &&
+    isValidWallPlacement(game, { ...info.wall, owner: game.current })
+  ) {
+    placeWall(info.wall);
+  }
 });
 
 window.addEventListener("resize", () => render());

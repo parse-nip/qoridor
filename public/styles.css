@@ -9,7 +9,7 @@
   --a: #1a9b8a;
   --b: #d4566a;
   --tile-size: min(7.2vmin, 52px);
-  --gap: min(1vmin, 7px);
+  --gap: min(1.35vmin, 10px);
   --radius: 4px;
   --wall: max(4px, calc(var(--gap) * 0.55));
   --font: "IBM Plex Sans", system-ui, sans-serif;
