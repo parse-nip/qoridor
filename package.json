@@ -1,0 +1,32 @@
+{
+  "name": "walls",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "directories": {
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/parse-nip/qoridor.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/parse-nip/qoridor/issues"
+  },
+  "homepage": "https://github.com/parse-nip/qoridor#readme",
+  "devDependencies": {
+    "playwright-core": "^1.61.1",
+    "vitest": "^4.1.10",
+    "wrangler": "^4.114.0"
+  },
+  "type": "module"
+}
